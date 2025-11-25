@@ -1,0 +1,226 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0 0% 98%;
+    --foreground: 240 10% 3.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 240 10% 3.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 240 10% 3.9%;
+    --primary: 240 5.9% 10%;
+    --primary-foreground: 0 0% 98%;
+    --secondary: 240 4.8% 95.9%;
+    --secondary-foreground: 240 5.9% 10%;
+    --muted: 240 4.8% 95.9%;
+    --muted-foreground: 240 3.8% 46.1%;
+    --accent: 240 4.8% 95.9%;
+    --accent-foreground: 240 5.9% 10%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 240 5.9% 90%;
+    --input: 240 5.9% 90%;
+    --ring: 240 5.9% 10%;
+    --radius: 0.75rem;
+
+    --game-primary: 217 91% 60%;
+    --game-secondary: 262 83% 58%;
+    --game-accent: 322 75% 55%;
+    --game-success: 142 76% 36%;
+    --game-warning: 38 92% 50%;
+    --game-error: 0 84% 60%;
+
+    --gradient-primary: linear-gradient(135deg, hsl(var(--game-primary)) 0%, hsl(var(--game-secondary)) 100%);
+    --gradient-success: linear-gradient(135deg, hsl(var(--game-success)) 0%, hsl(142 76% 46%) 100%);
+    --gradient-warning: linear-gradient(135deg, hsl(var(--game-warning)) 0%, hsl(38 92% 60%) 100%);
+  }
+
+  .dark {
+    --background: 240 10% 3.9%;
+    --foreground: 0 0% 98%;
+    --card: 240 10% 3.9%;
+    --card-foreground: 0 0% 98%;
+    --popover: 240 10% 3.9%;
+    --popover-foreground: 0 0% 98%;
+    --primary: 0 0% 98%;
+    --primary-foreground: 240 5.9% 10%;
+    --secondary: 240 3.7% 15.9%;
+    --secondary-foreground: 0 0% 98%;
+    --muted: 240 3.7% 15.9%;
+    --muted-foreground: 240 5% 64.9%;
+    --accent: 240 3.7% 15.9%;
+    --accent-foreground: 0 0% 98%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 240 3.7% 15.9%;
+    --input: 240 3.7% 15.9%;
+    --ring: 240 4.9% 83.9%;
+  }
+}
+
+@layer base {
+  * {
+    border-color: hsl(var(--border));
+  }
+  body {
+    background-color: hsl(var(--background));
+    color: hsl(var(--foreground));
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+}
+
+@layer components {
+  .game-container {
+    width: 100%;
+    max-width: 424px;
+    height: 695px;
+    margin: 0 auto;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .mobile-game-container {
+    width: 100%;
+    max-width: 360px;
+    height: 640px;
+    margin: 0 auto;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .game-grid {
+    display: grid;
+    grid-template-columns: repeat(8, 1fr);
+    grid-template-rows: repeat(8, 1fr);
+    gap: 2px;
+    aspect-ratio: 1/1;
+    width: 100%;
+    max-width: 320px;
+    margin: 0 auto;
+  }
+  
+  .game-cell {
+    border-radius: 4px;
+    transition: all 0.2s ease;
+  }
+  
+  .game-cell-memorize {
+    background-color: #10B981 !important;
+    border: 2px solid #059669;
+    box-shadow: 0 2px 8px rgba(16, 185, 129, 0.4);
+  }
+  
+  .game-cell-selected {
+    background-color: #3B82F6 !important;
+    border: 2px solid #2563EB;
+    box-shadow: 0 2px 8px rgba(59, 130, 246, 0.4);
+    cursor: pointer;
+  }
+  
+  .game-cell-correct {
+    background-color: #10B981 !important;
+    border: 2px solid #059669;
+    box-shadow: 0 2px 8px rgba(16, 185, 129, 0.4);
+  }
+  
+  .game-cell-incorrect {
+    background-color: #EF4444 !important;
+    border: 2px solid #DC2626;
+    box-shadow: 0 2px 8px rgba(239, 68, 68, 0.4);
+  }
+  
+  .game-cell-missed {
+    background-color: #10B981 !important;
+    border: 3px solid #047857;
+    box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.3);
+    animation: flash 0.5s ease-in-out 2;
+  }
+
+  .submit-button {
+    background-color: #10B981;
+    color: white;
+    padding: 12px 32px;
+    font-size: 18px;
+    font-weight: 600;
+    border-radius: 8px;
+    border: none;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    margin-top: 16px;
+  }
+
+  .submit-button:hover:not(:disabled) {
+    background-color: #059669;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+  }
+
+  .submit-button:disabled {
+    background-color: #9CA3AF;
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+  }
+  
+  .pulse-animation {
+    animation: pulse 2s infinite;
+  }
+  
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.7; }
+  }
+  
+  @keyframes flash {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.1); }
+  }
+  
+  .slide-in {
+    animation: slideIn 0.3s ease-out;
+  }
+  
+  @keyframes slideIn {
+    from { transform: translateY(20px); opacity: 0; }
+    to { transform: translateY(0); opacity: 1; }
+  }
+
+  .responsive-grid {
+    width: 100%;
+    height: auto;
+    max-height: 400px;
+  }
+
+  /* Media queries for responsive design */
+  @media (max-width: 424px) {
+    .game-container {
+      max-width: 100%;
+      height: 100vh;
+      max-height: 695px;
+    }
+  }
+
+  @media (max-width: 360px) {
+    .mobile-game-container {
+      max-width: 100%;
+      height: 100vh;
+      max-height: 640px;
+    }
+    
+    .game-grid {
+      max-width: 280px;
+      gap: 1px;
+    }
+  }
+
+  @media (min-width: 425px) {
+    .game-container {
+      border-radius: 12px;
+      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+      margin-top: 20px;
+      margin-bottom: 20px;
+    }
+  }
+}

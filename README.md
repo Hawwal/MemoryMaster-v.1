@@ -252,7 +252,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 🔗 Links
 
-- **Website**: [memorymaster.game](https://memorymaster.game)
+- **Website**: [memory-master-v1.vercel.app](https://memory-master-v1.vercel.app)
 - **Farcaster**: [@Hawwal](https://farcaster.xyz/hawwal)
 - **Discord**: [Join my community](https://discord.gg/cCypm3KWKV))
 

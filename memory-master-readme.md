@@ -133,8 +133,8 @@ npm or yarn
 ### Clone Repository
 
 ```bash
-git clone https://github.com/yourusername/memory-master.git
-cd memory-master
+git clone https://github.com/hawwal/MemoryMaster-v.1.git
+cd MemoryMaster-v.1
 ```
 
 ### Install Dependencies
@@ -253,38 +253,38 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 ## 🔗 Links
 
 - **Website**: [memorymaster.game](https://memorymaster.game)
-- **Farcaster**: [@memorymaster](https://warpcast.com/memorymaster)
-- **Twitter**: [@MemoryMasterApp](https://twitter.com/MemoryMasterApp)
-- **Discord**: [Join our community](https://discord.gg/memorymaster)
+- **Farcaster**: [@Hawwal](https://farcaster.xyz/hawwal)
+- **Discord**: [Join my community](https://discord.gg/cCypm3KWKV))
 
 ---
 
 ## 📧 Contact & Support
 
-- **Issues**: [GitHub Issues](https://github.com/yourusername/memory-master/issues)
-- **Email**: support@memorymaster.game
-- **Farcaster DMs**: [@memorymaster](https://warpcast.com/memorymaster)
+- **Issues**: [GitHub Issues](https://github.com/hawwal/MemoryMaster-v.1/issues)
+- **Email**: hawwal.ogungbadero@gmail.com
+- **Farcaster DMs**: [@Hawwal](https://farcaster.xyz/hawwal)
+- [@itshawwal](https://twitter.com/itshawwal)
 
 ---
 
 ## 🙏 Acknowledgments
 
+- Design and developed on [Naoh AI](https://trynoah.ai/)
 - Inspired by classic Tetris and memory training games
 - Built for the Farcaster Mini Apps ecosystem
 - Powered by CELO blockchain
-- UI components by [shadcn/ui](https://ui.shadcn.com)
 
 ---
 
 ## 📊 Stats
 
-![GitHub stars](https://img.shields.io/github/stars/yourusername/memory-master?style=social)
-![GitHub forks](https://img.shields.io/github/forks/yourusername/memory-master?style=social)
-![GitHub issues](https://img.shields.io/github/issues/yourusername/memory-master)
-![License](https://img.shields.io/github/license/yourusername/memory-master)
+![GitHub stars](https://img.shields.io/github/stars/yourusername/MemoryMaster-v.1?style=social)
+![GitHub forks](https://img.shields.io/github/forks/hawwal/MemoryMaster-v.1?style=social)
+![GitHub issues](https://img.shields.io/github/issues/hawwal/MemoryMaster-v.1)
+![License](https://img.shields.io/github/license/hawwal/MemoryMaster-v.1)
 
 ---
 
-**Made with ❤️ by the Memory Master Team**
+**Made with ❤️ by Hawwal**
 
 *Test your memory. Challenge your limits. Master the patterns.*

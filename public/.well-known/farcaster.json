@@ -10,7 +10,7 @@
     "splashBackgroundColor": "#FFFFFF",
     "webhookUrl": "https://memory-master-v1.vercel.app/api/webhook",
     "description": "Memory Master is a fast-paced pattern challenge game that puts your memory skills to the test.",
-    "subtitle": "Sharpen your memory-memorize and conquer the leaderboard",
+    "subtitle": "Sharpen your memory skills",
     "primaryCategory": "games",
     "tags": [
       "games",

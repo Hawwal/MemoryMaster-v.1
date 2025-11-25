@@ -1,6 +1,6 @@
 # Memory Master v1.0
 
-![Memory Master Logo](./public/logo.png)
+<img width="277" height="146" alt="Memory Master Logo SM" src="https://github.com/user-attachments/assets/45eb54fe-0fb6-4868-8dbb-b2c1d90a30e9" />
 
 **Memory Master** is a fast-paced pattern challenge game that puts your memory skills to the test. Inspired by classic Tetris-style shapes, this game challenges players to memorize increasingly complex patterns and recreate them from memory under time pressure.
 

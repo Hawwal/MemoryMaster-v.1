@@ -1,4 +1,9 @@
 {
+  "accountAssociation": {
+    "header": "eyJmaWQiOjExMTM0MjMsInR5cGUiOiJjdXN0b2R5Iiwia2V5IjoiMHhDZjUzZWJmNDg0YzgyMUJEMjQ0OEQ1ODgyYzMyQmU5QWI5ZDM2N2Q2In0",
+    "payload": "eyJkb21haW4iOiJtZW1vcnktbWFzdGVyLXYxLnZlcmNlbC5hcHAifQ",
+    "signature": "3EVRX1LNIIt1yFtr1JpIRgBL0H9bZk0MkSxt5QTgdZMbBcvA6dzMoy7iur+kwMK7h8iXsZ7b1WNNZxCWZCxzJRw="
+  },
   "frame": {
     "name": "Memory Master",
     "version": "1",

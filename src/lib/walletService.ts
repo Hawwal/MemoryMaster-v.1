@@ -50,7 +50,6 @@ export class WalletService {
         callback(this.state);
     }
 
-
     async fetchBalance(address: string) {
         if (!address) return;
         
@@ -145,6 +144,65 @@ export class WalletService {
 
     formatAddress(address: string): string {
         return `${address.slice(0, 6)}...${address.slice(-4)}`;
+    }
+
+    // ✨ NEW METHOD - Add this for payment functionality
+    public async sendPayment(toAddress: string, amountInCelo: string): Promise<boolean> {
+        if (!this.state.account) {
+            throw new Error('Wallet not connected');
+        }
+
+        if (!window.ethereum) {
+            throw new Error('Wallet not found');
+        }
+
+        try {
+            // Validate address
+            if (!ethers.utils.isAddress(toAddress)) {
+                throw new Error('Invalid recipient address');
+            }
+
+            // Convert amount to wei
+            const amountInWei = ethers.utils.parseEther(amountInCelo);
+
+            // Get provider and signer
+            const provider = new ethers.providers.Web3Provider(window.ethereum);
+            const signer = provider.getSigner();
+
+            // Check if user has enough balance
+            const balance = await provider.getBalance(this.state.account);
+            if (balance.lt(amountInWei)) {
+                throw new Error('Insufficient balance');
+            }
+
+            // Send transaction
+            const tx = await signer.sendTransaction({
+                to: toAddress,
+                value: amountInWei,
+            });
+
+            this.showToast('Transaction Sent', 'Waiting for confirmation...');
+
+            // Wait for transaction confirmation
+            const receipt = await tx.wait();
+
+            if (receipt && receipt.status === 1) {
+                // Update balance after successful transaction
+                await this.fetchBalance(this.state.account);
+                return true;
+            } else {
+                throw new Error('Transaction failed');
+            }
+        } catch (error: any) {
+            console.error('Payment error:', error);
+            
+            // Handle user rejection
+            if (error.code === 'ACTION_REJECTED' || error.code === 4001) {
+                throw new Error('Transaction rejected by user');
+            }
+            
+            throw new Error(error.message || 'Payment failed');
+        }
     }
 
     private async initialize() {

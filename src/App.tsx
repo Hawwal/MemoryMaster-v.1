@@ -10,6 +10,18 @@ import { SplashScreen } from '@/components/SplashScreen';
 import { GameScreen } from '@/components/GameScreen';
 import { PaymentModal } from '@/components/PaymentModal';
 import { Leaderboard } from '@/components/Leaderboard';
+import { createClient } from '@supabase/supabase-js';
+import sdk from '@farcaster/frame-sdk';
+
+// Initialize Supabase client
+const supabase = createClient(
+  import.meta.env.VITE_SUPABASE_URL,
+  import.meta.env.VITE_SUPABASE_ANON_KEY
+);
+
+// Your CELO wallet address to receive payments
+const GAME_WALLET_ADDRESS = import.meta.env.VITE_GAME_WALLET_ADDRESS || '0xYourWalletAddressHere';
+const GAME_PRICE = import.meta.env.VITE_GAME_PRICE || '0.1';
 
 const Home = () => {
     const { toast } = useToast();
@@ -24,12 +36,41 @@ const Home = () => {
     const [gameState, setGameState] = useState<'splash' | 'payment' | 'game' | 'leaderboard'>('splash');
     const [finalScore, setFinalScore] = useState(0);
     const [finalLevel, setFinalLevel] = useState(1);
-    const [leaderboardFilter, setLeaderboardFilter] = useState<'daily' | 'weekly' | 'all-time'>('daily');
+    const [leaderboardFilter, setLeaderboardFilter] = useState<'daily' | 'weekly' | 'all-time'>('all-time');
     const [userName, setUserName] = useState('Player');
     const [userHandle, setUserHandle] = useState('player123');
+    const [leaderboardEntries, setLeaderboardEntries] = useState<any[]>([]);
+    const [isLoadingLeaderboard, setIsLoadingLeaderboard] = useState(false);
+    const [isProcessingPayment, setIsProcessingPayment] = useState(false);
+
+    // Initialize Farcaster SDK
+    useEffect(() => {
+        const initializeFarcasterSdk = async () => {
+            try {
+                await sdk.actions.ready();
+                console.log('Farcaster SDK ready');
+                
+                // Get Farcaster user info
+                const context = await sdk.context;
+                if (context?.user) {
+                    setUserName(context.user.displayName || context.user.username || 'Player');
+                    setUserHandle(context.user.username || 'player');
+                    
+                    // Save to localStorage
+                    localStorage.setItem('userName', context.user.displayName || context.user.username || 'Player');
+                    localStorage.setItem('userHandle', context.user.username || 'player');
+                    localStorage.setItem('fid', context.user.fid.toString());
+                }
+            } catch (error) {
+                console.error('Error initializing Farcaster SDK:', error);
+            }
+        };
+
+        initializeFarcasterSdk();
+    }, []);
 
     useEffect(() => {
-        // Load user data from localStorage
+        // Load user data from localStorage (fallback)
         const savedUserName = localStorage.getItem('userName');
         const savedUserHandle = localStorage.getItem('userHandle');
         
@@ -45,10 +86,77 @@ const Home = () => {
         walletService.onStateUpdate(setWalletState);
         walletServiceRef.current = walletService;
 
+        // Load leaderboard data
+        fetchLeaderboard();
+
         return () => {
             walletService.destroy();
         };
     }, [toast]);
+
+    // Helper function to format dates
+    const formatDate = (dateString: string): string => {
+        const date = new Date(dateString);
+        const now = new Date();
+        const diffMs = now.getTime() - date.getTime();
+        const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+        const diffDays = Math.floor(diffHours / 24);
+
+        if (diffHours < 24) return 'Today';
+        if (diffDays === 1) return 'Yesterday';
+        if (diffDays < 7) return `${diffDays} days ago`;
+        return date.toLocaleDateString();
+    };
+
+    // Fetch leaderboard from Supabase
+    const fetchLeaderboard = async () => {
+        setIsLoadingLeaderboard(true);
+        try {
+            let query = supabase
+                .from('leaderboard')
+                .select('*')
+                .order('score', { ascending: false })
+                .order('level', { ascending: false })
+                .limit(100);
+
+            // Apply time filters
+            const now = new Date();
+            if (leaderboardFilter === 'daily') {
+                const dayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+                query = query.gte('created_at', dayAgo.toISOString());
+            } else if (leaderboardFilter === 'weekly') {
+                const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+                query = query.gte('created_at', weekAgo.toISOString());
+            }
+
+            const { data, error } = await query;
+
+            if (error) throw error;
+
+            // Format entries
+            const entries = (data || []).map((entry: any, index: number) => ({
+                rank: index + 1,
+                username: entry.username,
+                userHandle: entry.user_handle,
+                avatar: entry.avatar || '',
+                score: entry.score,
+                level: entry.level,
+                date: formatDate(entry.created_at),
+                fid: entry.fid
+            }));
+
+            setLeaderboardEntries(entries);
+        } catch (error) {
+            console.error('Error fetching leaderboard:', error);
+            setLeaderboardEntries([]);
+        } finally {
+            setIsLoadingLeaderboard(false);
+        }
+    };
+
+    useEffect(() => {
+        fetchLeaderboard();
+    }, [leaderboardFilter]);
 
     const connectWallet = () => {
         walletServiceRef.current?.connectWallet();
@@ -70,31 +178,116 @@ const Home = () => {
         }
     };
 
-    const handlePayment = () => {
-        setGameState('game');
+    const handlePayment = async () => {
+        setIsProcessingPayment(true);
+        
+        try {
+            // Validate wallet address
+            if (!GAME_WALLET_ADDRESS || GAME_WALLET_ADDRESS === '0xYourWalletAddressHere') {
+                throw new Error('Game wallet address not configured. Please set VITE_GAME_WALLET_ADDRESS in your .env file');
+            }
+
+            // Process actual CELO payment
+            const success = await walletServiceRef.current?.sendPayment(
+                GAME_WALLET_ADDRESS,
+                GAME_PRICE
+            );
+
+            if (success) {
+                toast({
+                    title: "Payment Successful!",
+                    description: `${GAME_PRICE} CELO sent successfully. Starting game...`
+                });
+                
+                // Wait a moment for user to see success message
+                setTimeout(() => {
+                    setIsProcessingPayment(false);
+                    setGameState('game');
+                }, 1500);
+            } else {
+                throw new Error('Payment failed');
+            }
+        } catch (error: any) {
+            console.error('Payment error:', error);
+            toast({
+                title: "Payment Failed",
+                description: error.message || "Unable to process payment. Please try again.",
+                variant: "destructive"
+            });
+            setIsProcessingPayment(false);
+        }
     };
 
     const handlePaymentRequest = () => {
         setGameState('payment');
     };
 
-    const handleGameEnd = (score: number, level: number) => {
+    const handleGameEnd = async (score: number, level: number) => {
         setFinalScore(score);
         setFinalLevel(level);
+        
+        // Submit score to Supabase
+        try {
+            const fid = localStorage.getItem('fid') || `guest_${Date.now()}`;
+            
+            // Check if user already has a score
+            const { data: existing, error: fetchError } = await supabase
+                .from('leaderboard')
+                .select('*')
+                .eq('fid', fid)
+                .maybeSingle();
+
+            if (fetchError && fetchError.code !== 'PGRST116') {
+                throw fetchError;
+            }
+
+            if (existing) {
+                // Update if new score is higher
+                if (score > existing.score || (score === existing.score && level > existing.level)) {
+                    const { error: updateError } = await supabase
+                        .from('leaderboard')
+                        .update({
+                            username: userName,
+                            user_handle: userHandle,
+                            score,
+                            level,
+                            updated_at: new Date().toISOString()
+                        })
+                        .eq('fid', fid);
+
+                    if (updateError) throw updateError;
+                    console.log('Score updated successfully');
+                }
+            } else {
+                // Insert new entry
+                const { error: insertError } = await supabase
+                    .from('leaderboard')
+                    .insert({
+                        fid,
+                        username: userName,
+                        user_handle: userHandle,
+                        score,
+                        level,
+                        avatar: '',
+                        created_at: new Date().toISOString(),
+                        updated_at: new Date().toISOString()
+                    });
+
+                if (insertError) throw insertError;
+                console.log('Score submitted successfully');
+            }
+            
+            // Refresh leaderboard
+            await fetchLeaderboard();
+        } catch (error) {
+            console.error('Error submitting score:', error);
+        }
+        
         setGameState('leaderboard');
     };
 
     const { account, currentNetwork, isConnecting, balance, isLoadingBalance } = walletState;
     const currentConfig = getNetworkConfig();
-
-    // Mock leaderboard data
-    const leaderboardEntries = [
-        { rank: 1, username: 'MemoryMaster', avatar: '', score: 2450, level: 15, date: 'Today' },
-        { rank: 2, username: 'GridGuru', avatar: '', score: 1980, level: 12, date: 'Today' },
-        { rank: 3, username: 'ShapeShifter', avatar: '', score: 1760, level: 11, date: 'Today' },
-        { rank: 4, username: 'RecallKing', avatar: '', score: 1520, level: 10, date: 'Yesterday' },
-        { rank: 5, username: 'PatternPro', avatar: '', score: 1340, level: 9, date: 'Yesterday' }
-    ];
 
     if (gameState === 'splash') {
         return <SplashScreen onStartGame={handleStartGame} />;
@@ -106,7 +299,7 @@ const Home = () => {
                 isOpen={true}
                 onClose={() => setGameState('splash')}
                 onPayment={handlePayment}
-                isLoading={false}
+                isLoading={isProcessingPayment}
             />
         );
     }
@@ -139,6 +332,7 @@ const Home = () => {
                         entries={leaderboardEntries}
                         filter={leaderboardFilter}
                         onFilterChange={setLeaderboardFilter}
+                        isLoading={isLoadingLeaderboard}
                     />
                     <div className="text-center mt-6">
                         <button
@@ -160,9 +354,9 @@ const Home = () => {
                     <div className="text-center">
                         <div className="flex items-center justify-center mt-5">
                             <Wave className="w-8 h-8 text-purple-500 mr-2" />
-                            <h1 className="text-3xl font-bold text-foreground">Cello Wallet</h1>
+                            <h1 className="text-3xl font-bold text-foreground">Celo Wallet</h1>
                         </div>
-                        <p className="text-muted-foreground">Connect to Cello network</p>
+                        <p className="text-muted-foreground">Connect to Celo network</p>
                     </div>
                     
                     <div className="flex items-center justify-center p-4">

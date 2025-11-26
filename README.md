@@ -140,7 +140,9 @@ cd MemoryMaster-v.1
 ### Install Dependencies
 
 ```bash
-pnpm install
+npm install
+# or
+yarn install
 ```
 
 ### Environment Variables
@@ -156,7 +158,9 @@ NEXT_PUBLIC_CELO_RPC_URL=your_rpc_url
 ### Run Development Server
 
 ```bash
-pnpm dev
+npm run dev
+# or
+yarn dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000) in your browser.
@@ -250,7 +254,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 - **Website**: [memory-master-v1.vercel.app](https://memory-master-v1.vercel.app)
 - **Farcaster**: [@Hawwal](https://farcaster.xyz/hawwal)
-- **Discord**: [Join my community](https://discord.gg/cCypm3KWKV)
+- **Discord**: [Join my community](https://discord.gg/cCypm3KWKV))
 
 ---
 

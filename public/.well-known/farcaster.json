@@ -1,4 +1,9 @@
 {
+  "accountAssociation": {
+    "header": "eyJmaWQiOjExMTM0MjMsInR5cGUiOiJhdXRoIiwia2V5IjoiMHgwNEEzNDA4NzI2NEZlNzQyNWRDQjIyOWIyNTdGNDBFNTI0M0M3NUI0In0",
+    "payload": "eyJkb21haW4iOiJtZW1vcnktbWFzdGVyLXYxLnZlcmNlbC5hcHAifQ",
+    "signature": "mnR8tzyf9sg0SX1bNycDyAvZbbR5YAu14zHFcSnFW9pGiwkkULgU8X5yPdV01VBJPVF2u1W7lt2FI7uUBwAIphw="
+  },
   "frame": {
     "name": "Memory Master",
     "version": "1",
@@ -9,8 +14,8 @@
     "splashImageUrl": "https://memory-master-v1.vercel.app/splash.png",
     "splashBackgroundColor": "#FFFFFF",
     "webhookUrl": "https://memory-master-v1.vercel.app/api/webhook",
-    "description": "Memory Master is a fast-paced pattern challenge game that puts your memory skills to the test. Inspired by classic Tetris-style shapes, this game challenges players to memorize increasingly complex patterns and recreate them from memory under time pressure.",
-    "subtitle": "Sharpen your memory—memorize, recreate, and conquer the leaderboard!",
+    "description": "Memory Master is a fast-paced pattern challenge game that puts your memory skills to the test.",
+    "subtitle": "Sharpen your memory skills",
     "primaryCategory": "games",
     "tags": [
       "games",

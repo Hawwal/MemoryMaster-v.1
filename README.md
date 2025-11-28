@@ -2,7 +2,7 @@
 
 <img width="277" height="146" alt="Memory Master Logo SM" src="https://github.com/user-attachments/assets/45eb54fe-0fb6-4868-8dbb-b2c1d90a30e9" />
 
-**Memory Master** is a fast-paced pattern challenge game that puts your memory skills to the test. Inspired by classic Tetris-style shapes, this game challenges players to memorize increasingly complex patterns and recreate them from memory under time pressure.
+**Memory Master** is a fast-paced pattern challenge game that combines cognitive training with competitive gaming. Built as a Farcaster Mini App with Noah AI on the CELO blockchain, it offers players an engaging way to improve their visual memory while competing on a global leaderboard.
 
 ## 🎮 About
 
@@ -126,8 +126,8 @@ Built as a Farcaster Mini App with CELO blockchain integration, Memory Master of
 ### Prerequisites
 
 ```bash
-Node.js >= 18.x
-npm or yarn
+Node.js >= 20.x
+pnpm
 ```
 
 ### Clone Repository
@@ -140,27 +140,23 @@ cd MemoryMaster-v.1
 ### Install Dependencies
 
 ```bash
-npm install
-# or
-yarn install
+pnpm install
 ```
 
 ### Environment Variables
 
-Create a `.env.local` file:
+Create a `.env` file:
 
 ```env
-NEXT_PUBLIC_FARCASTER_APP_ID=your_app_id
-NEXT_PUBLIC_CELO_RPC_URL=your_rpc_url
+VITE_FARCASTER_APP_ID=your_app_id
+VITE_CELO_RPC_URL=your_rpc_url
 # Add other required environment variables
 ```
 
 ### Run Development Server
 
 ```bash
-npm run dev
-# or
-yarn dev
+pnpm dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000) in your browser.
@@ -168,11 +164,8 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 ### Build for Production
 
 ```bash
-npm run build
-npm start
-# or
-yarn build
-yarn start
+pnpm run build
+pnpm start
 ```
 
 ---
@@ -261,7 +254,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 ## 📧 Contact & Support
 
 - **Issues**: [GitHub Issues](https://github.com/hawwal/MemoryMaster-v.1/issues)
-- **Email**: hawwal.ogungbadero@gmail.com
+- **Email**: hawwal@blaqkstereo.com
 - **Farcaster DMs**: [@Hawwal](https://farcaster.xyz/hawwal)
 - [@itshawwal](https://twitter.com/itshawwal)
 

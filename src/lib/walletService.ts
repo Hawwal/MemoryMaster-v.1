@@ -1,8 +1,7 @@
 import { ethers } from 'ethers';
 import { getNetworkConfig} from '@/lib/config';
 import { getCeloBalance } from '@/lib/tokenService';
-import { getReferralTag } from '@divvi/referral-sdk/referral';
-import { submitReferral } from '@divvi/referral-sdk/api';
+import { getReferralTag, submitReferral } from '@divvi/sdk';
 
 const getCurrentNetworkConfig = () => {
     const config = getNetworkConfig();

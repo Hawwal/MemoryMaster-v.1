@@ -1,6 +1,7 @@
 import { ethers } from 'ethers';
 import { getNetworkConfig} from '@/lib/config';
 import { getCeloBalance } from '@/lib/tokenService';
+import { getReferralTag, submitReferral } from '@divvi/referral-sdk';
 
 const getCurrentNetworkConfig = () => {
     const config = getNetworkConfig();
@@ -146,7 +147,7 @@ export class WalletService {
         return `${address.slice(0, 6)}...${address.slice(-4)}`;
     }
 
-    // ✨ NEW METHOD - Add this for payment functionality
+    // ✅ UPDATED sendPayment METHOD (Ethers v6 compatible)
     public async sendPayment(toAddress: string, amountInCelo: string): Promise<boolean> {
         if (!this.state.account) {
             throw new Error('Wallet not connected');
@@ -157,37 +158,58 @@ export class WalletService {
         }
 
         try {
-            // Validate address
-            if (!ethers.utils.isAddress(toAddress)) {
+            // Validate recipient address
+            if (!ethers.isAddress(toAddress)) {
                 throw new Error('Invalid recipient address');
             }
 
-            // Convert amount to wei
-            const amountInWei = ethers.utils.parseEther(amountInCelo);
+            // Convert CELO → Wei
+            const amountInWei = ethers.parseEther(amountInCelo);
 
-            // Get provider and signer
-            const provider = new ethers.providers.Web3Provider(window.ethereum);
-            const signer = provider.getSigner();
+            // Use ethers v6 provider + signer
+            const provider = new ethers.BrowserProvider(window.ethereum);
+            const signer = await provider.getSigner();
+            const userAddress = await signer.getAddress();
 
-            // Check if user has enough balance
-            const balance = await provider.getBalance(this.state.account);
-            if (balance.lt(amountInWei)) {
+            // Balance check
+            const balance = await provider.getBalance(userAddress);
+            if (balance < amountInWei) {
                 throw new Error('Insufficient balance');
             }
 
-            // Send transaction
+            // Generate Divvi referral tag
+            const referralTag = getReferralTag({
+                user: userAddress,
+                consumer: import.meta.env.VITE_DIVVI_CONSUMER_ID || '0xYourDivviIdentifier',
+            });
+
+            // Send transaction with Divvi tracking
             const tx = await signer.sendTransaction({
                 to: toAddress,
                 value: amountInWei,
+                data: referralTag,
             });
 
             this.showToast('Transaction Sent', 'Waiting for confirmation...');
 
-            // Wait for transaction confirmation
+            // Wait for confirmation
             const receipt = await tx.wait();
 
             if (receipt && receipt.status === 1) {
-                // Update balance after successful transaction
+                const network = await provider.getNetwork();
+
+                // Submit referral
+                try {
+                    await submitReferral({
+                        txHash: receipt.hash,
+                        chainId: Number(network.chainId),
+                    });
+                    console.log('✅ Divvi referral submitted:', receipt.hash);
+                } catch (divviError) {
+                    console.error('⚠️ Divvi submission failed:', divviError);
+                }
+
+                // Update balance after success
                 await this.fetchBalance(this.state.account);
                 return true;
             } else {
@@ -195,12 +217,11 @@ export class WalletService {
             }
         } catch (error: any) {
             console.error('Payment error:', error);
-            
-            // Handle user rejection
+
             if (error.code === 'ACTION_REJECTED' || error.code === 4001) {
                 throw new Error('Transaction rejected by user');
             }
-            
+
             throw new Error(error.message || 'Payment failed');
         }
     }

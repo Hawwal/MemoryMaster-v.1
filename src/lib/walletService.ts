@@ -1,6 +1,15 @@
 import { ethers } from 'ethers';
 import { getNetworkConfig} from '@/lib/config';
 import { getCeloBalance } from '@/lib/tokenService';
+import { wagmiConfig } from '@/lib/wagmiClient';
+import { getConnectorClient } from 'wagmi/actions';
+import { celo } from 'wagmi/chains';
+import { parseEther } from 'viem';
+import { getReferralTag } from '@divvi/referral-sdk/referral';
+import { submitReferral } from '@divvi/referral-sdk/api';
+
+// Divvi Consumer Address
+const DIVVI_CONSUMER_ADDRESS = '0xB6Bb848A8E00b77698CAb1626C893dc8ddE4927c';
 
 const getCurrentNetworkConfig = () => {
     const config = getNetworkConfig();
@@ -17,6 +26,7 @@ export interface WalletState {
     isConnecting: boolean;
     balance: string;
     isLoadingBalance: boolean;
+    farcasterFid?: string;
 }
 
 export interface WalletCallbacks {
@@ -30,10 +40,12 @@ export class WalletService {
         currentNetwork: '',
         isConnecting: false,
         balance: '',
-        isLoadingBalance: false
+        isLoadingBalance: false,
+        farcasterFid: undefined
     };
     private callbacks: WalletCallbacks = {};
     private stateUpdateCallback?: (state: WalletState) => void;
+    private wagmiClient?: any;
 
     constructor(callbacks?: WalletCallbacks) {
         this.callbacks = callbacks || {};
@@ -49,7 +61,6 @@ export class WalletService {
         this.stateUpdateCallback = callback;
         callback(this.state);
     }
-
 
     async fetchBalance(address: string) {
         if (!address) return;
@@ -69,17 +80,17 @@ export class WalletService {
     }
 
     async checkNetwork() {
-        if (!window.ethereum) return;
-        
         try {
-            const chainId = await window.ethereum.request({ method: 'eth_chainId' });
-            const currentConfig = getCurrentNetworkConfig();
-            const isCurrentNetwork = chainId.toLowerCase() === currentConfig.chainId.toLowerCase();
-            
-            if (isCurrentNetwork) {
-                this.updateState({ currentNetwork: currentConfig.chainName });
-            } else {
-                this.updateState({ currentNetwork: 'Other Network' });
+            if (this.wagmiClient) {
+                const chainId = await this.wagmiClient.getChainId();
+                const currentConfig = getCurrentNetworkConfig();
+                const isCurrentNetwork = chainId === parseInt(currentConfig.chainId, 16);
+                
+                if (isCurrentNetwork) {
+                    this.updateState({ currentNetwork: currentConfig.chainName });
+                } else {
+                    this.updateState({ currentNetwork: 'Other Network' });
+                }
             }
         } catch (error) {
             this.updateState({ currentNetwork: 'Unknown' });
@@ -91,28 +102,46 @@ export class WalletService {
     }
 
     async connectWallet() {
-        if (!window.ethereum) {
-            this.showToast("Error", "Please install MetaMask!");
+        // Check if we're in a Farcaster frame environment
+        if (typeof window === 'undefined' || !window.parent) {
+            this.showToast("Error", "Please open this app in Farcaster!");
             return;
         }
 
         this.updateState({ isConnecting: true });
         try {
-            await this.checkNetwork();
-            await window.ethereum.request({ method: 'eth_requestAccounts' });
+            // Get Farcaster connector client
+            this.wagmiClient = await getConnectorClient(wagmiConfig, {
+                chainId: celo.id
+            });
+
+            if (!this.wagmiClient) {
+                throw new Error("Failed to connect to Farcaster wallet");
+            }
+
+            const address = this.wagmiClient.account.address;
             
-            const provider = new ethers.providers.Web3Provider(window.ethereum);
-            const address = await provider.getSigner().getAddress();
+            // Get Farcaster FID if available
+            const fid = await this.getFarcasterFid();
             
-            this.updateState({ account: address });
+            this.updateState({ 
+                account: address,
+                farcasterFid: fid 
+            });
+            
             this.callbacks.onWalletChange?.(address);
+            await this.checkNetwork();
             await this.fetchBalance(address);
 
+            // Initialize Divvi referral tracking
+            await this.initializeDivviReferral(address, fid);
+
             localStorage.removeItem('wallet_disconnect_requested');
-            this.showToast("Success", "Wallet connected successfully!");
+            this.showToast("Success", "Farcaster wallet connected successfully!");
             
         } catch (error: any) {
-            this.showToast("Error", error.message || "Failed to connect wallet");
+            console.error('Farcaster wallet connection error:', error);
+            this.showToast("Error", error.message || "Failed to connect Farcaster wallet");
         } finally {
             this.updateState({ isConnecting: false });
         }
@@ -120,78 +149,156 @@ export class WalletService {
 
     async disconnectWallet() {
         try {
-            await window.ethereum.request({
-                method: 'wallet_revokePermissions',
-                params: [
-                    {
-                        eth_accounts: {},
-                    },
-                ],
+            // Clear wagmi client
+            this.wagmiClient = null;
+            
+            localStorage.setItem('wallet_disconnect_requested', 'true');
+            this.updateState({
+                account: '',
+                currentNetwork: '',
+                balance: '',
+                farcasterFid: undefined
             });
+            this.callbacks.onWalletChange?.('');
+            
+            this.showToast("Success", "Farcaster wallet disconnected successfully!");
         } catch (error) {
-            console.log('Failed to revoke permissions:', error);
+            console.error('Failed to disconnect:', error);
+            this.showToast("Error", "Failed to disconnect wallet");
         }
-        
-        localStorage.setItem('wallet_disconnect_requested', 'true');
-        this.updateState({
-            account: '',
-            currentNetwork: '',
-            balance: ''
-        });
-        this.callbacks.onWalletChange?.('');
-        
-        this.showToast("Success", "Wallet disconnected successfully!");
+    }
+
+    private async getFarcasterFid(): Promise<string | undefined> {
+        try {
+            // Attempt to get Farcaster FID from frame context
+            if (window.parent && window.parent !== window) {
+                // Post message to parent frame to get FID
+                return new Promise((resolve) => {
+                    const messageHandler = (event: MessageEvent) => {
+                        if (event.data?.type === 'farcaster_fid') {
+                            window.removeEventListener('message', messageHandler);
+                            resolve(event.data.fid);
+                        }
+                    };
+                    
+                    window.addEventListener('message', messageHandler);
+                    window.parent.postMessage({ type: 'get_farcaster_fid' }, '*');
+                    
+                    // Timeout after 3 seconds
+                    setTimeout(() => {
+                        window.removeEventListener('message', messageHandler);
+                        resolve(undefined);
+                    }, 3000);
+                });
+            }
+        } catch (error) {
+            console.error('Failed to get Farcaster FID:', error);
+        }
+        return undefined;
+    }
+
+    private async initializeDivviReferral(address: string, fid?: string) {
+        try {
+            // Get referral tag if user came from a referral
+            const referralTag = getReferralTag();
+            
+            if (referralTag && fid) {
+                // Submit referral to Divvi
+                await submitReferral({
+                    consumerAddress: DIVVI_CONSUMER_ADDRESS,
+                    referrerAddress: referralTag,
+                    referredAddress: address,
+                    metadata: {
+                        farcasterFid: fid,
+                        timestamp: Date.now(),
+                        dappName: 'Memory Master'
+                    }
+                });
+                
+                console.log('Divvi referral submitted successfully');
+                this.showToast("Referral", "Welcome! Your referral has been recorded.");
+            }
+        } catch (error) {
+            console.error('Failed to initialize Divvi referral:', error);
+            // Don't show error to user as referral is optional
+        }
+    }
+
+    async makePayment(amount: string, recipient?: string): Promise<boolean> {
+        try {
+            if (!this.wagmiClient) {
+                throw new Error("Wallet not connected");
+            }
+
+            const tx = await this.wagmiClient.sendTransaction({
+                to: recipient || DIVVI_CONSUMER_ADDRESS,
+                value: parseEther(amount),
+                chain: celo
+            });
+
+            await tx.wait();
+            
+            // Update balance after payment
+            await this.fetchBalance(this.state.account);
+            
+            this.showToast("Success", `Payment of ${amount} CELO completed!`);
+            return true;
+        } catch (error: any) {
+            console.error('Payment failed:', error);
+            this.showToast("Error", error.message || "Payment failed");
+            return false;
+        }
     }
 
     formatAddress(address: string): string {
         return `${address.slice(0, 6)}...${address.slice(-4)}`;
     }
 
+    getFarcasterFid(): string | undefined {
+        return this.state.farcasterFid;
+    }
+
+    getDivviConsumerAddress(): string {
+        return DIVVI_CONSUMER_ADDRESS;
+    }
+
     private async initialize() {
-        if (!window.ethereum) return;
-
-        const handleAccountsChanged = (accounts: string[]) => {
-            const addr = accounts[0] || '';
-            this.updateState({ account: addr });
-            this.callbacks.onWalletChange?.(addr);
-            
-            if (addr) {
-                this.fetchBalance(addr);
-            } else {
-                this.updateState({ currentNetwork: '', balance: '' });
+        try {
+            const wasDisconnected = localStorage.getItem('wallet_disconnect_requested');
+            if (wasDisconnected === 'true') {
+                console.log('User disconnected, not auto-connecting');
+                return;
             }
-        };
 
-        const checkExistingConnection = async () => {
-            try {
-                const wasDisconnected = localStorage.getItem('wallet_disconnect_requested');
-                if (wasDisconnected === 'true') {
-                    console.log('User disconnected, not auto-connecting');
-                    return;
-                }
+            // Check if already connected to Farcaster wallet
+            const existingClient = await getConnectorClient(wagmiConfig, {
+                chainId: celo.id
+            }).catch(() => null);
 
-                const accounts = await window.ethereum.request({ method: 'eth_accounts' });
-                if (accounts.length > 0) {
-                    this.updateState({ account: accounts[0] });
-                    this.callbacks.onWalletChange?.(accounts[0]);
-                    await this.checkNetwork();
-                    setTimeout(() => this.fetchBalance(accounts[0]), 100);
-                }
-            } catch (error) {
-                console.log('Failed to check existing connection:', error);
+            if (existingClient?.account?.address) {
+                this.wagmiClient = existingClient;
+                const address = existingClient.account.address;
+                const fid = await this.getFarcasterFid();
+                
+                this.updateState({ 
+                    account: address,
+                    farcasterFid: fid 
+                });
+                
+                this.callbacks.onWalletChange?.(address);
+                await this.checkNetwork();
+                setTimeout(() => this.fetchBalance(address), 100);
+                
+                // Initialize Divvi referral for existing connection
+                await this.initializeDivviReferral(address, fid);
             }
-        };
-
-        await checkExistingConnection();
-
-        window.ethereum.on('accountsChanged', handleAccountsChanged);
-        window.ethereum.on('chainChanged', () => this.checkNetwork());
+        } catch (error) {
+            console.log('Failed to check existing Farcaster connection:', error);
+        }
     }
 
     destroy() {
-        if (window.ethereum) {
-            window.ethereum.removeAllListeners('accountsChanged');
-            window.ethereum.removeAllListeners('chainChanged');
-        }
+        // Clean up any resources
+        this.wagmiClient = null;
     }
 }

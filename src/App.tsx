@@ -86,7 +86,7 @@ const Home = () => {
         walletService.onStateUpdate(setWalletState);
         walletServiceRef.current = walletService;
 
-        // Load leaderboard data
+        // Load leaderboard data on mount
         fetchLeaderboard();
 
         return () => {
@@ -133,7 +133,7 @@ const Home = () => {
 
             if (error) throw error;
 
-            // Format entries
+            // Format entries with ranks
             const entries = (data || []).map((entry: any, index: number) => ({
                 rank: index + 1,
                 username: entry.username,
@@ -154,6 +154,7 @@ const Home = () => {
         }
     };
 
+    // Re-fetch when filter changes
     useEffect(() => {
         fetchLeaderboard();
     }, [leaderboardFilter]);
@@ -187,7 +188,7 @@ const Home = () => {
                 throw new Error('Game wallet address not configured. Please set VITE_GAME_WALLET_ADDRESS in your .env file');
             }
 
-            // Process actual CELO payment
+            // Process actual CELO payment with Divvi tracking
             const success = await walletServiceRef.current?.sendPayment(
                 GAME_WALLET_ADDRESS,
                 GAME_PRICE
@@ -256,7 +257,7 @@ const Home = () => {
                         .eq('fid', fid);
 
                     if (updateError) throw updateError;
-                    console.log('Score updated successfully');
+                    console.log('✅ Score updated successfully');
                 }
             } else {
                 // Insert new entry
@@ -274,13 +275,13 @@ const Home = () => {
                     });
 
                 if (insertError) throw insertError;
-                console.log('Score submitted successfully');
+                console.log('✅ Score submitted successfully');
             }
             
-            // Refresh leaderboard
+            // Refresh leaderboard to show updated data
             await fetchLeaderboard();
         } catch (error) {
-            console.error('Error submitting score:', error);
+            console.error('❌ Error submitting score:', error);
         }
         
         setGameState('leaderboard');

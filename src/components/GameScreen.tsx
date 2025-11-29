@@ -4,7 +4,7 @@ import { GameHeader } from './GameHeader';
 import { GameMenu } from './GameMenu';
 import { GameOverScreen } from './GameOverScreen';
 import { generatePolyomino, getMemorizationTime, getRecallTime, getShapeSize, calculateAccuracy } from '@/lib/gameLogic';
-import { Timer, Target, CheckCircle, XCircle, Trophy, AlertCircle } from 'lucide-react';
+import { Timer, Target, Trophy, AlertCircle, ArrowRight, RotateCcw } from 'lucide-react';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -56,13 +56,13 @@ export const GameScreen: React.FC<GameScreenProps> = ({
   const [showNextLevelButton, setShowNextLevelButton] = useState(false);
   const [levelFailed, setLevelFailed] = useState(false);
   const [showRetryButton, setShowRetryButton] = useState(false);
+  const [hasResetLevel, setHasResetLevel] = useState(false); // Track if level was reset
 
   const [savedTimerState, setSavedTimerState] = useState<{time: number, phase: 'memorizing' | 'recalling' | 'idle'}>({time: 0, phase: 'idle'});
 
   const isMobile = useIsMobile();
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const answerTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const gameTimerRef = useRef<NodeJS.Timeout | null>(null);
   const isPausedRef = useRef(false);
   
   const audioRefs = {
@@ -103,9 +103,7 @@ export const GameScreen: React.FC<GameScreenProps> = ({
           ref.current = null;
         }
       });
-      if (timerRef.current) clearInterval(timerRef.current);
-      if (answerTimerRef.current) clearInterval(answerTimerRef.current);
-      if (gameTimerRef.current) clearTimeout(gameTimerRef.current);
+      stopAllTimers();
     };
   }, []);
 
@@ -140,25 +138,37 @@ export const GameScreen: React.FC<GameScreenProps> = ({
     }
   }, [gameState.level, gameState.highestLevel]);
 
+  const stopAllTimers = () => {
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+    if (answerTimerRef.current) {
+      clearInterval(answerTimerRef.current);
+      answerTimerRef.current = null;
+    }
+  };
+
   const startMemorizationTimer = (duration: number) => {
     console.log('Starting memorization timer:', duration);
     setCountdownTimer(duration);
     setCurrentPhase('memorizing');
     
-    if (timerRef.current) clearInterval(timerRef.current);
+    stopAllTimers();
 
     timerRef.current = setInterval(() => {
       setCountdownTimer((prev) => {
-        console.log('Memorization timer tick:', prev - 1);
         if (prev <= 1) {
           clearInterval(timerRef.current!);
           timerRef.current = null;
-          setCurrentPhase('idle');
-          setTimeout(() => {
-            if (!isPausedRef.current) {
+          
+          // Only auto-transition if not paused
+          if (!isPausedRef.current) {
+            setCurrentPhase('idle');
+            setTimeout(() => {
               transitionToRecallPhase();
-            }
-          }, 100);
+            }, 100);
+          }
           return 0;
         }
         return prev - 1;
@@ -186,41 +196,27 @@ export const GameScreen: React.FC<GameScreenProps> = ({
     setCountdownTimer(duration);
     setCurrentPhase('recalling');
     
-    if (answerTimerRef.current) clearInterval(answerTimerRef.current);
+    stopAllTimers();
 
     answerTimerRef.current = setInterval(() => {
       setCountdownTimer((prev) => {
-        console.log('Answer timer tick:', prev - 1);
         if (prev <= 1) {
           clearInterval(answerTimerRef.current!);
           answerTimerRef.current = null;
           setCurrentPhase('idle');
-          setTimeout(() => {
-            if (!isPausedRef.current) {
+          
+          // Only auto-submit if not paused
+          if (!isPausedRef.current) {
+            setTimeout(() => {
               console.log('Answer timer expired, auto-submitting');
               evaluateSelection();
-            }
-          }, 100);
+            }, 100);
+          }
           return 0;
         }
         return prev - 1;
       });
     }, 1000);
-  };
-
-  const stopAllTimers = () => {
-    if (timerRef.current) {
-      clearInterval(timerRef.current);
-      timerRef.current = null;
-    }
-    if (answerTimerRef.current) {
-      clearInterval(answerTimerRef.current);
-      answerTimerRef.current = null;
-    }
-    if (gameTimerRef.current) {
-      clearTimeout(gameTimerRef.current);
-      gameTimerRef.current = null;
-    }
   };
 
   const formatTimer = (seconds: number): string => {
@@ -238,6 +234,9 @@ export const GameScreen: React.FC<GameScreenProps> = ({
     const newShape = generatePolyomino(shapeSize);
     
     console.log('Generated shape:', newShape);
+
+    // Reset the reset button availability for new level
+    setHasResetLevel(false);
 
     setGameState(prev => ({
       ...prev,
@@ -393,9 +392,33 @@ export const GameScreen: React.FC<GameScreenProps> = ({
     }
   };
 
-  const togglePause = () => {
-    if (gameState.gameOver) return;
-    setGameState(prev => ({ ...prev, isPaused: !prev.isPaused }));
+  const handleProceedToRecall = () => {
+    // Stop memorization timer and proceed immediately
+    stopAllTimers();
+    transitionToRecallPhase();
+  };
+
+  const handleResetLevel = () => {
+    // Can only reset once per level
+    if (hasResetLevel) return;
+    
+    setHasResetLevel(true);
+    
+    // Stop current timer
+    stopAllTimers();
+    
+    // Generate new pattern and restart memorization
+    const shapeSize = getShapeSize(gameState.level);
+    const newShape = generatePolyomino(shapeSize);
+    
+    setGameState(prev => ({
+      ...prev,
+      currentShape: newShape,
+      playerSelections: []
+    }));
+    
+    const memTime = Math.floor(getMemorizationTime(gameState.level) / 1000);
+    startMemorizationTimer(memTime);
   };
 
   const pauseGame = () => {
@@ -423,6 +446,7 @@ export const GameScreen: React.FC<GameScreenProps> = ({
           startAnswerTimer(savedTimerState.time);
         }
       } else if (savedTimerState.time === 0) {
+        // Timer expired while paused, transition phases
         if (savedTimerState.phase === 'memorizing') {
           transitionToRecallPhase();
         } else if (savedTimerState.phase === 'recalling') {
@@ -452,12 +476,12 @@ export const GameScreen: React.FC<GameScreenProps> = ({
   };
 
   const handleShare = () => {
-    const shareText = `I scored ${gameState.score} points and reached level ${gameState.level} in Memory Challenge! Can you beat me?`;
+    const shareText = `I scored ${gameState.score} points and reached level ${gameState.level} in Memory Master! Can you beat me?`;
     const shareUrl = window.location.href;
     
     if (navigator.share) {
       navigator.share({
-        title: 'Memory Challenge',
+        title: 'Memory Master',
         text: shareText,
         url: shareUrl,
       }).catch(console.error);
@@ -502,7 +526,13 @@ export const GameScreen: React.FC<GameScreenProps> = ({
           isPlaying={gameState.isPlaying}
           isPaused={gameState.isPaused}
           onMenuClick={() => { pauseGame(); setMenuOpen(true); }}
-          onPauseClick={togglePause}
+          onPauseClick={() => {
+            if (gameState.isPaused) {
+              resumeGame();
+            } else {
+              pauseGame();
+            }
+          }}
         />
 
         <div className="flex-1 flex items-center justify-center">
@@ -551,6 +581,33 @@ export const GameScreen: React.FC<GameScreenProps> = ({
           )}
         </div>
 
+        {/* Memorization Phase Buttons */}
+        {gameState.isMemorizing && !gameState.isPaused && (
+          <div className="flex items-center justify-between mt-4 px-4">
+            <button
+              onClick={handleProceedToRecall}
+              className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors"
+            >
+              Proceed <ArrowRight className="w-4 h-4" />
+            </button>
+            
+            <button
+              onClick={handleResetLevel}
+              disabled={hasResetLevel}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors ${
+                hasResetLevel 
+                  ? 'bg-gray-300 text-gray-500 cursor-not-allowed' 
+                  : 'bg-orange-600 hover:bg-orange-700 text-white'
+              }`}
+              title={hasResetLevel ? "Already used for this level" : "Reset with new pattern"}
+            >
+              <RotateCcw className="w-4 h-4" />
+              Reset
+            </button>
+          </div>
+        )}
+
+        {/* Submit Button - Answer Phase */}
         {gameState.isRecalling && !gameState.isPaused && (
           <div className="text-center mt-4">
             <button
@@ -566,6 +623,7 @@ export const GameScreen: React.FC<GameScreenProps> = ({
           </div>
         )}
 
+        {/* Success Popup */}
         <Dialog open={showSuccessPopup} onOpenChange={setShowSuccessPopup}>
           <DialogContent className="sm:max-w-md">
             <DialogHeader>
@@ -624,6 +682,7 @@ export const GameScreen: React.FC<GameScreenProps> = ({
           </div>
         )}
 
+        {/* Failure Popup */}
         <Dialog open={showFailurePopup} onOpenChange={setShowFailurePopup}>
           <DialogContent className="sm:max-w-md">
             <DialogHeader>

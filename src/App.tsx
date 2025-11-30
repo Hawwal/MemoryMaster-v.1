@@ -49,7 +49,7 @@ const Home = () => {
         const initializeFarcasterSdk = async () => {
             try {
                 await sdk.actions.ready();
-                console.log('Farcaster SDK ready');
+                console.log('✅ Farcaster SDK ready');
                 
                 // Get Farcaster user info
                 const context = await sdk.context;
@@ -61,6 +61,8 @@ const Home = () => {
                     localStorage.setItem('userName', context.user.displayName || context.user.username || 'Player');
                     localStorage.setItem('userHandle', context.user.username || 'player');
                     localStorage.setItem('fid', context.user.fid.toString());
+                    
+                    console.log('👤 Farcaster user:', context.user.username);
                 }
             } catch (error) {
                 console.error('Error initializing Farcaster SDK:', error);
@@ -173,26 +175,51 @@ const Home = () => {
     };
 
     /**
-     * CRITICAL FIX: Prepare payment by ensuring wallet is connected and on correct network
+     * CRITICAL FIX: Ensure wallet is connected before showing payment
      */
     const handleStartGame = async () => {
+        // Check if wallet is already connected
         if (!walletState.account) {
-            // Wallet not connected, connect it first
-            connectWallet();
-            return;
+            console.log('⚠️ Wallet not connected, connecting now...');
+            setIsPreparingPayment(true);
+            
+            try {
+                // Connect the wallet first
+                await walletServiceRef.current?.connectWallet();
+                
+                // Wait for connection state to update
+                await new Promise(resolve => setTimeout(resolve, 1000));
+                
+                // Check if connection was successful by getting fresh state
+                const currentAccount = walletState.account;
+                
+                if (!currentAccount) {
+                    throw new Error('Failed to connect wallet. Please ensure you are using the app in Farcaster.');
+                }
+                
+                console.log('✅ Wallet connected, preparing payment...');
+            } catch (error: any) {
+                console.error('Connection failed:', error);
+                toast({
+                    title: "Connection Failed",
+                    description: error.message || "Failed to connect wallet. Please try again.",
+                    variant: "destructive"
+                });
+                setIsPreparingPayment(false);
+                return;
+            }
         }
 
-        // Wallet is connected, but we need to ensure it's on CELO mainnet and balance is loaded
+        // Wallet is connected, prepare for payment
         setIsPreparingPayment(true);
         
         try {
-            // Give wallet service time to ensure we're on CELO mainnet
             console.log('🔄 Preparing payment - ensuring CELO mainnet connection...');
             
             // Force a network check to switch to CELO mainnet if needed
             await walletServiceRef.current?.checkNetwork();
             
-            // Wait a moment for network switch to complete
+            // Wait for network switch to complete
             await new Promise(resolve => setTimeout(resolve, 1000));
             
             // Refresh balance from CELO mainnet
@@ -200,7 +227,7 @@ const Home = () => {
                 await walletServiceRef.current?.fetchBalance(walletState.account);
             }
             
-            // Wait a moment for balance to load
+            // Wait for balance to load
             await new Promise(resolve => setTimeout(resolve, 500));
             
             console.log('✅ Payment preparation complete. Current balance:', walletState.balance, 'CELO');
@@ -226,6 +253,11 @@ const Home = () => {
             // Validate wallet address
             if (!GAME_WALLET_ADDRESS || GAME_WALLET_ADDRESS === '0xYourWalletAddressHere') {
                 throw new Error('Game wallet address not configured. Please set VITE_GAME_WALLET_ADDRESS in your .env file');
+            }
+
+            // Ensure wallet is still connected
+            if (!walletState.account) {
+                throw new Error('Wallet disconnected. Please reconnect and try again.');
             }
 
             // Double-check we have a valid balance before attempting payment
@@ -354,12 +386,16 @@ const Home = () => {
                 <SplashScreen onStartGame={handleStartGame} />
                 {/* Show loading overlay when preparing payment */}
                 {isPreparingPayment && (
-                    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-                        <div className="bg-card p-6 rounded-lg shadow-lg">
-                            <div className="flex flex-col items-center gap-3">
-                                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-game-primary"></div>
-                                <p className="text-foreground">Preparing payment...</p>
-                                <p className="text-sm text-muted-foreground">Switching to CELO Mainnet</p>
+                    <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50">
+                        <div className="bg-card p-8 rounded-xl shadow-2xl max-w-sm mx-4">
+                            <div className="flex flex-col items-center gap-4">
+                                <div className="animate-spin rounded-full h-12 w-12 border-4 border-game-primary border-t-transparent"></div>
+                                <div className="text-center">
+                                    <p className="text-lg font-semibold text-foreground mb-1">Preparing Payment</p>
+                                    <p className="text-sm text-muted-foreground">
+                                        {!account ? 'Connecting wallet...' : 'Switching to CELO Mainnet...'}
+                                    </p>
+                                </div>
                             </div>
                         </div>
                     </div>

@@ -1,7 +1,7 @@
 // Location: src/lib/walletService.ts
-// Fixed version to ensure CELO mainnet balance is read correctly
+// Fixed version with proper Farcaster auto-connect
 
-import { getAccount, getBalance, sendTransaction, waitForTransactionReceipt, getChainId, estimateGas, getGasPrice, switchChain } from '@wagmi/core';
+import { getAccount, getBalance, sendTransaction, waitForTransactionReceipt, getChainId, estimateGas, getGasPrice, switchChain, watchAccount, reconnect } from '@wagmi/core';
 import { config } from '@/providers/WagmiProvider';
 import { parseEther, formatEther } from 'viem';
 import { celo } from 'wagmi/chains';
@@ -36,6 +36,7 @@ export class WalletService {
     };
     private callbacks: WalletCallbacks = {};
     private stateUpdateCallback?: (state: WalletState) => void;
+    private unwatchAccount?: () => void;
 
     constructor(callbacks?: WalletCallbacks) {
         this.callbacks = callbacks || {};
@@ -148,9 +149,20 @@ export class WalletService {
         this.updateState({ isConnecting: true });
         
         try {
+            // In Farcaster frames, the wallet is automatically connected
+            // We just need to reconnect to ensure we have the latest state
+            console.log('🔄 Reconnecting to Farcaster wallet...');
+            
+            const connectors = await reconnect(config);
+            console.log('🔗 Reconnected connectors:', connectors);
+            
+            // Give it a moment to fully connect
+            await new Promise(resolve => setTimeout(resolve, 500));
+            
             const account = getAccount(config);
             
-            if (account.address) {
+            if (account.address && account.isConnected) {
+                console.log('✅ Wallet connected:', account.address);
                 this.updateState({ account: account.address });
                 this.callbacks.onWalletChange?.(account.address);
                 
@@ -195,7 +207,7 @@ export class WalletService {
     public async sendPayment(toAddress: string, amountInCelo: string): Promise<boolean> {
         const account = getAccount(config);
         
-        if (!account.address) {
+        if (!account.address || !account.isConnected) {
             throw new Error('Wallet not connected. Please connect your Farcaster wallet.');
         }
 
@@ -345,6 +357,14 @@ export class WalletService {
                 return;
             }
 
+            console.log('🔄 Initializing wallet service...');
+            
+            // Reconnect to restore any existing connections
+            await reconnect(config);
+            
+            // Wait a moment for reconnection
+            await new Promise(resolve => setTimeout(resolve, 500));
+            
             const account = getAccount(config);
             
             if (account.address && account.isConnected) {
@@ -353,13 +373,29 @@ export class WalletService {
                 this.updateState({ account: account.address });
                 this.callbacks.onWalletChange?.(account.address);
                 
-                // Ensure on CELO mainnet and fetch balance
-                setTimeout(async () => {
-                    if (account.address) {
-                        await this.checkNetwork();
-                        await this.fetchBalance(account.address);
+                // Set up account watcher
+                this.unwatchAccount = watchAccount(config, {
+                    onChange: (account) => {
+                        console.log('👀 Account changed:', account.address);
+                        if (account.address) {
+                            this.updateState({ account: account.address });
+                            this.callbacks.onWalletChange?.(account.address);
+                            this.fetchBalance(account.address);
+                        }
                     }
-                }, 100);
+                });
+                
+                // Ensure on CELO mainnet
+                await this.checkNetwork();
+                
+                // Fetch balance after a short delay
+                setTimeout(() => {
+                    if (account.address) {
+                        this.fetchBalance(account.address);
+                    }
+                }, 1000);
+            } else {
+                console.log('⚠️ No wallet connected on initialization');
             }
         } catch (error) {
             console.error('Initialization error:', error);
@@ -368,5 +404,6 @@ export class WalletService {
 
     destroy() {
         console.log('🧹 WalletService cleanup');
+        this.unwatchAccount?.();
     }
 }

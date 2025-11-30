@@ -1,8 +1,7 @@
 // Location: src/lib/walletService.ts
-// Complete replacement for your existing walletService.ts
-// This version uses Wagmi + Farcaster wallet + Divvi tracking
+// Fixed version with proper gas fee calculation for CELO
 
-import { getAccount, getBalance, sendTransaction, waitForTransactionReceipt, getChainId } from '@wagmi/core';
+import { getAccount, getBalance, sendTransaction, waitForTransactionReceipt, getChainId, estimateGas, getGasPrice } from '@wagmi/core';
 import { config } from '@/providers/WagmiProvider';
 import { parseEther, formatEther } from 'viem';
 import { getReferralTag, submitReferral } from '@divvi/referral-sdk';
@@ -154,7 +153,7 @@ export class WalletService {
     }
 
     /**
-     * Send payment with Divvi referral tracking
+     * Send payment with Divvi referral tracking and proper gas fee handling
      * @param toAddress - Recipient CELO address
      * @param amountInCelo - Amount in CELO (e.g., "0.1")
      * @returns Promise<boolean> - True if successful
@@ -175,14 +174,13 @@ export class WalletService {
             // Convert CELO amount to wei (smallest unit)
             const amountInWei = parseEther(amountInCelo);
 
-            // Check if user has sufficient balance
+            // Get current balance
             const balance = await getBalance(config, {
                 address: account.address,
             });
 
-            if (balance.value < amountInWei) {
-                throw new Error(`Insufficient balance. You need ${amountInCelo} CELO but only have ${formatEther(balance.value)} CELO.`);
-            }
+            console.log('💰 Current balance:', formatEther(balance.value), 'CELO');
+            console.log('💸 Trying to send:', amountInCelo, 'CELO');
 
             // Generate Divvi referral tag for tracking
             const referralTag = getReferralTag({
@@ -190,13 +188,54 @@ export class WalletService {
                 consumer: DIVVI_CONSUMER_ID,
             });
 
-            console.log('🏷️ Divvi referral tag generated for user:', account.address);
+            console.log('🏷️ Divvi referral tag generated');
+
+            // Estimate gas for this transaction
+            let estimatedGas;
+            try {
+                estimatedGas = await estimateGas(config, {
+                    account: account.address,
+                    to: toAddress as `0x${string}`,
+                    value: amountInWei,
+                    data: referralTag as `0x${string}`,
+                });
+                console.log('⛽ Estimated gas:', estimatedGas.toString());
+            } catch (gasError) {
+                console.warn('⚠️ Gas estimation failed, using default:', gasError);
+                // Default gas limit for simple CELO transfer with Divvi data
+                estimatedGas = BigInt(100000); // 100k gas should be enough
+            }
+
+            // Get current gas price
+            const gasPrice = await getGasPrice(config);
+            console.log('💵 Gas price:', formatEther(gasPrice), 'CELO per gas');
+
+            // Calculate total gas cost (gas * gasPrice)
+            const estimatedGasCost = estimatedGas * gasPrice;
+            console.log('🔥 Estimated gas cost:', formatEther(estimatedGasCost), 'CELO');
+
+            // Calculate total required (amount + gas)
+            const totalRequired = amountInWei + estimatedGasCost;
+            console.log('📊 Total required:', formatEther(totalRequired), 'CELO');
+            console.log('📊 Your balance:', formatEther(balance.value), 'CELO');
+
+            // Check if user has sufficient balance (amount + gas fees)
+            if (balance.value < totalRequired) {
+                const deficit = totalRequired - balance.value;
+                throw new Error(
+                    `Insufficient balance. You need ${formatEther(totalRequired)} CELO total ` +
+                    `(${amountInCelo} CELO + ${formatEther(estimatedGasCost)} CELO gas fees), ` +
+                    `but you only have ${formatEther(balance.value)} CELO. ` +
+                    `You're short ${formatEther(deficit)} CELO.`
+                );
+            }
 
             // Send transaction with Divvi tracking data
             const txHash = await sendTransaction(config, {
                 to: toAddress as `0x${string}`,
                 value: amountInWei,
                 data: referralTag as `0x${string}`, // Append Divvi referral tag
+                gas: estimatedGas, // Explicitly set gas limit
             });
 
             this.showToast('Transaction Sent', 'Waiting for blockchain confirmation...');
@@ -209,6 +248,8 @@ export class WalletService {
 
             if (receipt.status === 'success') {
                 console.log('✅ Transaction confirmed:', txHash);
+                console.log('⛽ Actual gas used:', receipt.gasUsed.toString());
+                console.log('💵 Actual gas cost:', formatEther(receipt.gasUsed * gasPrice), 'CELO');
 
                 // Submit referral to Divvi for reward distribution
                 try {
@@ -250,8 +291,10 @@ export class WalletService {
                 throw new Error('Transaction rejected by user');
             }
             
-            if (error.message?.includes('insufficient funds')) {
-                throw new Error('Insufficient CELO balance for transaction + gas fees');
+            if (error.message?.includes('insufficient funds') || 
+                error.message?.includes('Insufficient balance')) {
+                // Already formatted error message, just throw it
+                throw error;
             }
             
             // Generic error

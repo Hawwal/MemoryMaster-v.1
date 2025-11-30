@@ -1,13 +1,17 @@
 // Location: src/lib/walletService.ts
-// Fixed version with proper gas fee calculation for CELO
+// Fixed version to read balance from correct CELO chain
 
-import { getAccount, getBalance, sendTransaction, waitForTransactionReceipt, getChainId, estimateGas, getGasPrice } from '@wagmi/core';
+import { getAccount, getBalance, sendTransaction, waitForTransactionReceipt, getChainId, estimateGas, getGasPrice, switchChain } from '@wagmi/core';
 import { config } from '@/providers/WagmiProvider';
 import { parseEther, formatEther } from 'viem';
+import { celo } from 'wagmi/chains';
 import { getReferralTag, submitReferral } from '@divvi/referral-sdk';
 
 // Divvi Consumer ID for Memory Master
 const DIVVI_CONSUMER_ID = import.meta.env.VITE_DIVVI_CONSUMER_ID || '0xB6Bb848A8E00b77698CAb1626C893dc8ddE4927c';
+
+// CELO Mainnet Chain ID
+const CELO_MAINNET_CHAIN_ID = 42220;
 
 export interface WalletState {
     account: string;
@@ -54,12 +58,15 @@ export class WalletService {
         this.updateState({ isLoadingBalance: true });
         
         try {
-            // Use wagmi's getBalance for CELO
+            // CRITICAL FIX: Always fetch balance from CELO mainnet
             const balance = await getBalance(config, {
                 address: address as `0x${string}`,
+                chainId: CELO_MAINNET_CHAIN_ID, // Force CELO mainnet
             });
 
             const formattedBalance = formatEther(balance.value);
+            
+            console.log('💰 Fetched balance from CELO Mainnet:', formattedBalance, 'CELO');
             
             this.updateState({ 
                 balance: parseFloat(formattedBalance).toFixed(4),
@@ -76,13 +83,23 @@ export class WalletService {
 
     async checkNetwork() {
         try {
-            const account = getAccount(config);
+            const currentChainId = await getChainId(config);
+            const networkName = this.getNetworkName(currentChainId);
             
-            if (account.chain) {
-                const networkName = this.getNetworkName(account.chain.id);
-                this.updateState({ currentNetwork: networkName });
-            } else {
-                this.updateState({ currentNetwork: 'Unknown' });
+            console.log('🌐 Current network:', networkName, `(Chain ID: ${currentChainId})`);
+            
+            this.updateState({ currentNetwork: networkName });
+            
+            // If not on CELO mainnet, switch to it
+            if (currentChainId !== CELO_MAINNET_CHAIN_ID) {
+                console.log('⚠️ Not on CELO Mainnet, attempting to switch...');
+                try {
+                    await switchChain(config, { chainId: CELO_MAINNET_CHAIN_ID });
+                    console.log('✅ Switched to CELO Mainnet');
+                    this.updateState({ currentNetwork: 'Celo Mainnet' });
+                } catch (switchError) {
+                    console.error('❌ Failed to switch network:', switchError);
+                }
             }
         } catch (error) {
             console.error('Network check error:', error);
@@ -104,22 +121,20 @@ export class WalletService {
     }
 
     async connectWallet() {
-        // With Farcaster Frame, wallet is automatically connected
-        // We just need to retrieve the account information
         this.updateState({ isConnecting: true });
         
         try {
+            // Ensure we're on CELO mainnet first
+            await this.checkNetwork();
+            
             const account = getAccount(config);
             
             if (account.address) {
                 this.updateState({ account: account.address });
                 this.callbacks.onWalletChange?.(account.address);
                 
-                // Fetch balance and check network
-                await Promise.all([
-                    this.fetchBalance(account.address),
-                    this.checkNetwork()
-                ]);
+                // Fetch balance from CELO mainnet
+                await this.fetchBalance(account.address);
                 
                 localStorage.removeItem('wallet_disconnect_requested');
                 this.showToast("Success", "Wallet connected successfully!");
@@ -153,10 +168,7 @@ export class WalletService {
     }
 
     /**
-     * Send payment with Divvi referral tracking and proper gas fee handling
-     * @param toAddress - Recipient CELO address
-     * @param amountInCelo - Amount in CELO (e.g., "0.1")
-     * @returns Promise<boolean> - True if successful
+     * Send payment with Divvi referral tracking
      */
     public async sendPayment(toAddress: string, amountInCelo: string): Promise<boolean> {
         const account = getAccount(config);
@@ -166,23 +178,34 @@ export class WalletService {
         }
 
         try {
-            // Validate recipient address format
+            // Validate recipient address
             if (!/^0x[a-fA-F0-9]{40}$/.test(toAddress)) {
                 throw new Error('Invalid recipient address format');
             }
 
-            // Convert CELO amount to wei (smallest unit)
+            // CRITICAL: Ensure we're on CELO mainnet
+            const currentChainId = await getChainId(config);
+            console.log('🌐 Current chain ID:', currentChainId);
+            
+            if (currentChainId !== CELO_MAINNET_CHAIN_ID) {
+                console.log('⚠️ Switching to CELO Mainnet...');
+                await switchChain(config, { chainId: CELO_MAINNET_CHAIN_ID });
+                console.log('✅ Switched to CELO Mainnet');
+            }
+
+            // Convert CELO amount to wei
             const amountInWei = parseEther(amountInCelo);
 
-            // Get current balance
+            // Get balance from CELO mainnet specifically
             const balance = await getBalance(config, {
                 address: account.address,
+                chainId: CELO_MAINNET_CHAIN_ID, // Force CELO mainnet
             });
 
-            console.log('💰 Current balance:', formatEther(balance.value), 'CELO');
-            console.log('💸 Trying to send:', amountInCelo, 'CELO');
+            console.log('💰 CELO Mainnet Balance:', formatEther(balance.value), 'CELO');
+            console.log('💸 Amount to send:', amountInCelo, 'CELO');
 
-            // Generate Divvi referral tag for tracking
+            // Generate Divvi referral tag
             const referralTag = getReferralTag({
                 user: account.address,
                 consumer: DIVVI_CONSUMER_ID,
@@ -190,7 +213,7 @@ export class WalletService {
 
             console.log('🏷️ Divvi referral tag generated');
 
-            // Estimate gas for this transaction
+            // Estimate gas
             let estimatedGas;
             try {
                 estimatedGas = await estimateGas(config, {
@@ -198,28 +221,29 @@ export class WalletService {
                     to: toAddress as `0x${string}`,
                     value: amountInWei,
                     data: referralTag as `0x${string}`,
+                    chainId: CELO_MAINNET_CHAIN_ID,
                 });
                 console.log('⛽ Estimated gas:', estimatedGas.toString());
             } catch (gasError) {
                 console.warn('⚠️ Gas estimation failed, using default:', gasError);
-                // Default gas limit for simple CELO transfer with Divvi data
-                estimatedGas = BigInt(100000); // 100k gas should be enough
+                estimatedGas = BigInt(100000);
             }
 
-            // Get current gas price
-            const gasPrice = await getGasPrice(config);
+            // Get gas price
+            const gasPrice = await getGasPrice(config, {
+                chainId: CELO_MAINNET_CHAIN_ID,
+            });
             console.log('💵 Gas price:', formatEther(gasPrice), 'CELO per gas');
 
-            // Calculate total gas cost (gas * gasPrice)
+            // Calculate costs
             const estimatedGasCost = estimatedGas * gasPrice;
-            console.log('🔥 Estimated gas cost:', formatEther(estimatedGasCost), 'CELO');
-
-            // Calculate total required (amount + gas)
             const totalRequired = amountInWei + estimatedGasCost;
+            
+            console.log('🔥 Estimated gas cost:', formatEther(estimatedGasCost), 'CELO');
             console.log('📊 Total required:', formatEther(totalRequired), 'CELO');
             console.log('📊 Your balance:', formatEther(balance.value), 'CELO');
 
-            // Check if user has sufficient balance (amount + gas fees)
+            // Check if sufficient balance
             if (balance.value < totalRequired) {
                 const deficit = totalRequired - balance.value;
                 throw new Error(
@@ -230,88 +254,73 @@ export class WalletService {
                 );
             }
 
-            // Send transaction with Divvi tracking data
+            // Send transaction
             const txHash = await sendTransaction(config, {
                 to: toAddress as `0x${string}`,
                 value: amountInWei,
-                data: referralTag as `0x${string}`, // Append Divvi referral tag
-                gas: estimatedGas, // Explicitly set gas limit
+                data: referralTag as `0x${string}`,
+                gas: estimatedGas,
+                chainId: CELO_MAINNET_CHAIN_ID, // Force CELO mainnet
             });
 
-            this.showToast('Transaction Sent', 'Waiting for blockchain confirmation...');
-            console.log('📤 Transaction submitted:', txHash);
+            this.showToast('Transaction Sent', 'Waiting for confirmation...');
+            console.log('📤 Transaction hash:', txHash);
 
-            // Wait for transaction to be confirmed on-chain
+            // Wait for confirmation
             const receipt = await waitForTransactionReceipt(config, {
                 hash: txHash,
+                chainId: CELO_MAINNET_CHAIN_ID,
             });
 
             if (receipt.status === 'success') {
                 console.log('✅ Transaction confirmed:', txHash);
-                console.log('⛽ Actual gas used:', receipt.gasUsed.toString());
-                console.log('💵 Actual gas cost:', formatEther(receipt.gasUsed * gasPrice), 'CELO');
+                console.log('⛽ Gas used:', receipt.gasUsed.toString());
+                console.log('💵 Actual cost:', formatEther(receipt.gasUsed * gasPrice), 'CELO');
 
-                // Submit referral to Divvi for reward distribution
+                // Submit to Divvi
                 try {
-                    const chainId = await getChainId(config);
-                    
                     await submitReferral({
                         txHash: txHash,
-                        chainId: chainId,
+                        chainId: CELO_MAINNET_CHAIN_ID,
                     });
-                    
-                    console.log('✅ Divvi referral submitted successfully');
-                    console.log('📊 Referral tracking data:', {
-                        user: account.address,
-                        txHash,
-                        chainId,
-                        consumer: DIVVI_CONSUMER_ID,
-                    });
+                    console.log('✅ Divvi referral submitted');
                 } catch (divviError) {
-                    console.error('⚠️ Divvi referral submission failed:', divviError);
-                    // Don't block user flow - transaction still succeeded
-                    // Divvi may retry or can be submitted manually
+                    console.error('⚠️ Divvi submission failed:', divviError);
                 }
 
-                // Refresh user's balance
+                // Refresh balance
                 await this.fetchBalance(account.address);
                 
                 this.showToast('Success', `Payment of ${amountInCelo} CELO completed!`);
                 return true;
             } else {
-                throw new Error('Transaction failed on blockchain');
+                throw new Error('Transaction failed');
             }
         } catch (error: any) {
             console.error('💥 Payment error:', error);
             
-            // Handle specific error cases
             if (error.message?.includes('rejected') || 
                 error.message?.includes('denied') || 
                 error.message?.includes('User rejected')) {
                 throw new Error('Transaction rejected by user');
             }
             
-            if (error.message?.includes('insufficient funds') || 
-                error.message?.includes('Insufficient balance')) {
-                // Already formatted error message, just throw it
+            if (error.message?.includes('Insufficient balance')) {
                 throw error;
             }
             
-            // Generic error
             throw new Error(error.message || 'Payment failed. Please try again.');
         }
     }
 
     private async initialize() {
         try {
-            // Check if user previously disconnected
             const wasDisconnected = localStorage.getItem('wallet_disconnect_requested');
             if (wasDisconnected === 'true') {
-                console.log('User previously disconnected, not auto-connecting');
+                console.log('User previously disconnected');
                 return;
             }
 
-            // Check if Farcaster wallet is available and connected
             const account = getAccount(config);
             
             if (account.address && account.isConnected) {
@@ -320,26 +329,22 @@ export class WalletService {
                 this.updateState({ account: account.address });
                 this.callbacks.onWalletChange?.(account.address);
                 
-                // Load network info and balance
+                // Ensure on CELO mainnet
                 await this.checkNetwork();
                 
-                // Delay balance fetch slightly to ensure provider is ready
+                // Fetch balance
                 setTimeout(() => {
                     if (account.address) {
                         this.fetchBalance(account.address);
                     }
                 }, 100);
-            } else {
-                console.log('ℹ️ No Farcaster wallet connected on initialization');
             }
         } catch (error) {
-            console.error('Failed to initialize wallet connection:', error);
+            console.error('Initialization error:', error);
         }
     }
 
     destroy() {
-        // Cleanup method if needed for future use
-        // Wagmi handles most cleanup internally
         console.log('🧹 WalletService cleanup');
     }
 }

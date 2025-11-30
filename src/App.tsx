@@ -42,6 +42,7 @@ const Home = () => {
     const [leaderboardEntries, setLeaderboardEntries] = useState<any[]>([]);
     const [isLoadingLeaderboard, setIsLoadingLeaderboard] = useState(false);
     const [isProcessingPayment, setIsProcessingPayment] = useState(false);
+    const [isPreparingPayment, setIsPreparingPayment] = useState(false);
 
     // Initialize Farcaster SDK
     useEffect(() => {
@@ -171,11 +172,50 @@ const Home = () => {
         return walletServiceRef.current?.formatAddress(address) || '';
     };
 
-    const handleStartGame = () => {
+    /**
+     * CRITICAL FIX: Prepare payment by ensuring wallet is connected and on correct network
+     */
+    const handleStartGame = async () => {
         if (!walletState.account) {
+            // Wallet not connected, connect it first
             connectWallet();
-        } else {
+            return;
+        }
+
+        // Wallet is connected, but we need to ensure it's on CELO mainnet and balance is loaded
+        setIsPreparingPayment(true);
+        
+        try {
+            // Give wallet service time to ensure we're on CELO mainnet
+            console.log('🔄 Preparing payment - ensuring CELO mainnet connection...');
+            
+            // Force a network check to switch to CELO mainnet if needed
+            await walletServiceRef.current?.checkNetwork();
+            
+            // Wait a moment for network switch to complete
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            
+            // Refresh balance from CELO mainnet
+            if (walletState.account) {
+                await walletServiceRef.current?.fetchBalance(walletState.account);
+            }
+            
+            // Wait a moment for balance to load
+            await new Promise(resolve => setTimeout(resolve, 500));
+            
+            console.log('✅ Payment preparation complete. Current balance:', walletState.balance, 'CELO');
+            
+            // Now show payment modal
             setGameState('payment');
+        } catch (error: any) {
+            console.error('Error preparing payment:', error);
+            toast({
+                title: "Connection Error",
+                description: "Failed to prepare payment. Please ensure you're connected to CELO Mainnet.",
+                variant: "destructive"
+            });
+        } finally {
+            setIsPreparingPayment(false);
         }
     };
 
@@ -186,6 +226,24 @@ const Home = () => {
             // Validate wallet address
             if (!GAME_WALLET_ADDRESS || GAME_WALLET_ADDRESS === '0xYourWalletAddressHere') {
                 throw new Error('Game wallet address not configured. Please set VITE_GAME_WALLET_ADDRESS in your .env file');
+            }
+
+            // Double-check we have a valid balance before attempting payment
+            const currentBalance = parseFloat(walletState.balance || '0');
+            const requiredAmount = parseFloat(GAME_PRICE);
+            const estimatedGas = 0.003; // Rough estimate
+            
+            console.log('💰 Pre-payment check:');
+            console.log('  - Balance:', currentBalance, 'CELO');
+            console.log('  - Required:', requiredAmount, 'CELO');
+            console.log('  - Est. total:', requiredAmount + estimatedGas, 'CELO');
+            
+            if (currentBalance < requiredAmount + estimatedGas) {
+                throw new Error(
+                    `Insufficient balance. You have ${currentBalance} CELO but need approximately ` +
+                    `${(requiredAmount + estimatedGas).toFixed(4)} CELO (including gas). ` +
+                    `Please ensure your wallet is connected to CELO Mainnet.`
+                );
             }
 
             // Process actual CELO payment with Divvi tracking
@@ -291,7 +349,23 @@ const Home = () => {
     const currentConfig = getNetworkConfig();
 
     if (gameState === 'splash') {
-        return <SplashScreen onStartGame={handleStartGame} />;
+        return (
+            <div className="relative">
+                <SplashScreen onStartGame={handleStartGame} />
+                {/* Show loading overlay when preparing payment */}
+                {isPreparingPayment && (
+                    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+                        <div className="bg-card p-6 rounded-lg shadow-lg">
+                            <div className="flex flex-col items-center gap-3">
+                                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-game-primary"></div>
+                                <p className="text-foreground">Preparing payment...</p>
+                                <p className="text-sm text-muted-foreground">Switching to CELO Mainnet</p>
+                            </div>
+                        </div>
+                    </div>
+                )}
+            </div>
+        );
     }
 
     if (gameState === 'payment') {

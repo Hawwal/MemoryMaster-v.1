@@ -1,5 +1,5 @@
 // Location: src/lib/walletService.ts
-// Fixed version to read balance from correct CELO chain
+// Fixed version to ensure CELO mainnet balance is read correctly
 
 import { getAccount, getBalance, sendTransaction, waitForTransactionReceipt, getChainId, estimateGas, getGasPrice, switchChain } from '@wagmi/core';
 import { config } from '@/providers/WagmiProvider';
@@ -52,16 +52,42 @@ export class WalletService {
         callback(this.state);
     }
 
+    /**
+     * Ensures we're on CELO mainnet before any operation
+     */
+    private async ensureCeloMainnet(): Promise<void> {
+        try {
+            const currentChainId = await getChainId(config);
+            
+            if (currentChainId !== CELO_MAINNET_CHAIN_ID) {
+                console.log(`⚠️ Current chain: ${currentChainId}, switching to CELO Mainnet (${CELO_MAINNET_CHAIN_ID})...`);
+                await switchChain(config, { chainId: CELO_MAINNET_CHAIN_ID });
+                console.log('✅ Switched to CELO Mainnet');
+                
+                // Wait a moment for the chain switch to complete
+                await new Promise(resolve => setTimeout(resolve, 500));
+            } else {
+                console.log('✅ Already on CELO Mainnet');
+            }
+        } catch (error) {
+            console.error('❌ Failed to switch to CELO Mainnet:', error);
+            throw new Error('Unable to switch to CELO Mainnet. Please switch networks manually in your wallet.');
+        }
+    }
+
     async fetchBalance(address: string) {
         if (!address) return;
         
         this.updateState({ isLoadingBalance: true });
         
         try {
-            // CRITICAL FIX: Always fetch balance from CELO mainnet
+            // CRITICAL: Ensure we're on CELO mainnet BEFORE fetching balance
+            await this.ensureCeloMainnet();
+            
+            // Now fetch balance from CELO mainnet
             const balance = await getBalance(config, {
                 address: address as `0x${string}`,
-                chainId: CELO_MAINNET_CHAIN_ID, // Force CELO mainnet
+                chainId: CELO_MAINNET_CHAIN_ID,
             });
 
             const formattedBalance = formatEther(balance.value);
@@ -78,6 +104,7 @@ export class WalletService {
                 balance: '0.0000', 
                 isLoadingBalance: false 
             });
+            this.showToast("Error", "Failed to fetch balance. Please ensure you're on CELO Mainnet.");
         }
     }
 
@@ -90,16 +117,11 @@ export class WalletService {
             
             this.updateState({ currentNetwork: networkName });
             
-            // If not on CELO mainnet, switch to it
+            // Always switch to CELO mainnet if not already there
             if (currentChainId !== CELO_MAINNET_CHAIN_ID) {
-                console.log('⚠️ Not on CELO Mainnet, attempting to switch...');
-                try {
-                    await switchChain(config, { chainId: CELO_MAINNET_CHAIN_ID });
-                    console.log('✅ Switched to CELO Mainnet');
-                    this.updateState({ currentNetwork: 'Celo Mainnet' });
-                } catch (switchError) {
-                    console.error('❌ Failed to switch network:', switchError);
-                }
+                console.log('⚠️ Not on CELO Mainnet, switching...');
+                await this.ensureCeloMainnet();
+                this.updateState({ currentNetwork: 'Celo Mainnet' });
             }
         } catch (error) {
             console.error('Network check error:', error);
@@ -112,6 +134,8 @@ export class WalletService {
             42220: 'Celo Mainnet',
             44787: 'Celo Alfajores Testnet',
             62320: 'Celo Baklava Testnet',
+            1: 'Ethereum Mainnet',
+            8453: 'Base',
         };
         return networks[chainId] || `Chain ${chainId}`;
     }
@@ -124,16 +148,14 @@ export class WalletService {
         this.updateState({ isConnecting: true });
         
         try {
-            // Ensure we're on CELO mainnet first
-            await this.checkNetwork();
-            
             const account = getAccount(config);
             
             if (account.address) {
                 this.updateState({ account: account.address });
                 this.callbacks.onWalletChange?.(account.address);
                 
-                // Fetch balance from CELO mainnet
+                // Ensure we're on CELO mainnet and fetch balance
+                await this.checkNetwork();
                 await this.fetchBalance(account.address);
                 
                 localStorage.removeItem('wallet_disconnect_requested');
@@ -183,23 +205,25 @@ export class WalletService {
                 throw new Error('Invalid recipient address format');
             }
 
-            // CRITICAL: Ensure we're on CELO mainnet
+            // CRITICAL: Ensure we're on CELO mainnet BEFORE checking balance
+            console.log('🔄 Ensuring we are on CELO Mainnet...');
+            await this.ensureCeloMainnet();
+            
+            // Double-check we're on the right chain
             const currentChainId = await getChainId(config);
-            console.log('🌐 Current chain ID:', currentChainId);
+            console.log('🌐 Verified chain ID:', currentChainId);
             
             if (currentChainId !== CELO_MAINNET_CHAIN_ID) {
-                console.log('⚠️ Switching to CELO Mainnet...');
-                await switchChain(config, { chainId: CELO_MAINNET_CHAIN_ID });
-                console.log('✅ Switched to CELO Mainnet');
+                throw new Error('Failed to switch to CELO Mainnet. Please try again.');
             }
 
             // Convert CELO amount to wei
             const amountInWei = parseEther(amountInCelo);
 
-            // Get balance from CELO mainnet specifically
+            // Get balance from CELO mainnet - this should now show correct balance
             const balance = await getBalance(config, {
                 address: account.address,
-                chainId: CELO_MAINNET_CHAIN_ID, // Force CELO mainnet
+                chainId: CELO_MAINNET_CHAIN_ID,
             });
 
             console.log('💰 CELO Mainnet Balance:', formatEther(balance.value), 'CELO');
@@ -260,7 +284,7 @@ export class WalletService {
                 value: amountInWei,
                 data: referralTag as `0x${string}`,
                 gas: estimatedGas,
-                chainId: CELO_MAINNET_CHAIN_ID, // Force CELO mainnet
+                chainId: CELO_MAINNET_CHAIN_ID,
             });
 
             this.showToast('Transaction Sent', 'Waiting for confirmation...');
@@ -329,13 +353,11 @@ export class WalletService {
                 this.updateState({ account: account.address });
                 this.callbacks.onWalletChange?.(account.address);
                 
-                // Ensure on CELO mainnet
-                await this.checkNetwork();
-                
-                // Fetch balance
-                setTimeout(() => {
+                // Ensure on CELO mainnet and fetch balance
+                setTimeout(async () => {
                     if (account.address) {
-                        this.fetchBalance(account.address);
+                        await this.checkNetwork();
+                        await this.fetchBalance(account.address);
                     }
                 }, 100);
             }

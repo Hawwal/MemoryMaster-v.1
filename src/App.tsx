@@ -247,6 +247,9 @@ const Home = () => {
     };
 
     const handlePayment = async () => {
+        console.log('=== PAYMENT HANDLER START ===');
+        console.log('Current wallet state:', walletState);
+        
         setIsProcessingPayment(true);
         
         try {
@@ -260,25 +263,16 @@ const Home = () => {
                 throw new Error('Wallet disconnected. Please reconnect and try again.');
             }
 
-            // Double-check we have a valid balance before attempting payment
-            const currentBalance = parseFloat(walletState.balance || '0');
-            const requiredAmount = parseFloat(GAME_PRICE);
-            const estimatedGas = 0.003; // Rough estimate
-            
-            console.log('💰 Pre-payment check:');
-            console.log('  - Balance:', currentBalance, 'CELO');
-            console.log('  - Required:', requiredAmount, 'CELO');
-            console.log('  - Est. total:', requiredAmount + estimatedGas, 'CELO');
-            
-            if (currentBalance < requiredAmount + estimatedGas) {
-                throw new Error(
-                    `Insufficient balance. You have ${currentBalance} CELO but need approximately ` +
-                    `${(requiredAmount + estimatedGas).toFixed(4)} CELO (including gas). ` +
-                    `Please ensure your wallet is connected to CELO Mainnet.`
-                );
-            }
+            // Log current state before payment
+            console.log('💰 [handlePayment] Current state:');
+            console.log('  - Account:', walletState.account);
+            console.log('  - Network:', walletState.currentNetwork);
+            console.log('  - Balance:', walletState.balance, 'CELO');
+            console.log('  - Game Price:', GAME_PRICE, 'CELO');
 
             // Process actual CELO payment with Divvi tracking
+            // The sendPayment method will handle all balance checks internally
+            console.log('📤 [handlePayment] Calling sendPayment...');
             const success = await walletServiceRef.current?.sendPayment(
                 GAME_WALLET_ADDRESS,
                 GAME_PRICE
@@ -299,7 +293,7 @@ const Home = () => {
                 throw new Error('Payment failed');
             }
         } catch (error: any) {
-            console.error('Payment error:', error);
+            console.error('❌ [handlePayment] Payment error:', error);
             toast({
                 title: "Payment Failed",
                 description: error.message || "Unable to process payment. Please try again.",

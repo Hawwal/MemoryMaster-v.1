@@ -281,10 +281,18 @@ export class WalletService {
             console.log('💸 [sendPayment] Amount to send:', amountInCelo, 'CELO');
 
             // Generate Divvi tag
-            const referralTag = getReferralTag({
+            let referralTag = getReferralTag({
                 user: account.address,
                 consumer: DIVVI_CONSUMER_ID,
             });
+            
+            // CRITICAL FIX: Ensure referral tag has 0x prefix
+            if (referralTag && !referralTag.startsWith('0x')) {
+                referralTag = `0x${referralTag}`;
+                console.log('🔧 [sendPayment] Added 0x prefix to referral tag');
+            }
+            
+            console.log('🏷️ [sendPayment] Referral tag:', referralTag);
 
             // Estimate gas
             let estimatedGas;

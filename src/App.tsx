@@ -20,7 +20,7 @@ const supabase = createClient(
 );
 
 // Your CELO wallet address to receive payments
-const GAME_WALLET_ADDRESS = import.meta.env.VITE_GAME_WALLET_ADDRESS || '0xYourWalletAddressHere';
+const GAME_WALLET_ADDRESS = import.meta.env.VITE_GAME_WALLET_ADDRESS || '0xde25bf927c839355c66ee3551dae8a143bf85f9a';
 const GAME_PRICE = import.meta.env.VITE_GAME_PRICE || '0.1';
 
 const Home = () => {
@@ -253,9 +253,17 @@ const Home = () => {
         setIsProcessingPayment(true);
         
         try {
-            // Validate wallet address
-            if (!GAME_WALLET_ADDRESS || GAME_WALLET_ADDRESS === '0xYourWalletAddressHere') {
+            // Validate wallet address configuration
+            if (!GAME_WALLET_ADDRESS || GAME_WALLET_ADDRESS === '0xde25bf927c839355c66ee3551dae8a143bf85f9a') {
                 throw new Error('Game wallet address not configured. Please set VITE_GAME_WALLET_ADDRESS in your .env file');
+            }
+            
+            // CRITICAL: Prevent sending to yourself
+            if (walletState.account.toLowerCase() === GAME_WALLET_ADDRESS.toLowerCase()) {
+                throw new Error(
+                    'Invalid configuration: You cannot send payment to your own wallet address. ' +
+                    'Please update VITE_GAME_WALLET_ADDRESS in your .env file to the game\'s receiving wallet address.'
+                );
             }
 
             // Ensure wallet is still connected
@@ -266,6 +274,7 @@ const Home = () => {
             // Log current state before payment
             console.log('💰 [handlePayment] Current state:');
             console.log('  - Account:', walletState.account);
+            console.log('  - Game Wallet:', GAME_WALLET_ADDRESS);
             console.log('  - Network:', walletState.currentNetwork);
             console.log('  - Balance:', walletState.balance, 'CELO');
             console.log('  - Game Price:', GAME_PRICE, 'CELO');

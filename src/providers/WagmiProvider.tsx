@@ -1,35 +1,34 @@
 // Location: src/providers/WagmiProvider.tsx
-// Fixed version to ensure CELO mainnet is the primary chain
+// FIXED: Using correct Farcaster Mini App connector
+
+'use client';
 
 import { WagmiProvider, createConfig, http } from 'wagmi';
-import { celo } from 'wagmi/chains';
+import { celo, celoAlfajores } from 'wagmi/chains';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ReactNode } from 'react';
-import { farcasterFrame } from '@farcaster/frame-wagmi-connector';
 
-// Always use CELO mainnet as primary chain
-// IMPORTANT: Only include CELO mainnet in chains array
+// CRITICAL FIX: Use farcasterMiniApp (not farcasterFrame)
+import { farcasterMiniApp } from '@farcaster/miniapp-wagmi-connector';
+
+// Create wagmi config with CORRECT Farcaster connector
 const config = createConfig({
-  chains: [celo], // Only CELO mainnet - this ensures all operations default to CELO
+  chains: [celo, celoAlfajores],
   connectors: [
-    farcasterFrame({
-      // Farcaster Frame connector auto-detects the user's wallet
-    }),
+    farcasterMiniApp(), // FIXED: This is the correct connector for Mini Apps
   ],
   transports: {
-    [celo.id]: http('https://forno.celo.org'), // CELO mainnet RPC
+    [celo.id]: http(),
+    [celoAlfajores.id]: http(),
   },
-  // Set CELO mainnet as the initial chain
-  multiInjectedProviderDiscovery: false,
 });
 
 // Create a query client for React Query
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      refetchOnWindowFocus: false,
+      refetchOnWindowFocus: false, // Prevent unnecessary refetches
       retry: 1,
-      staleTime: 5000, // Cache for 5 seconds
     },
   },
 });
@@ -48,4 +47,5 @@ export function WagmiProviderWrapper({ children }: WagmiProviderWrapperProps) {
   );
 }
 
+// Export config for use in walletService
 export { config };

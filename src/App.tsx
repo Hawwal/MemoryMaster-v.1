@@ -251,20 +251,6 @@ const Home = () => {
         console.log('Current wallet state:', walletState);
         
         setIsProcessingPayment(true);
-        
-        try {
-            // Validate wallet address configuration
-            if (!GAME_WALLET_ADDRESS || GAME_WALLET_ADDRESS === '0xde25bf927c839355c66ee3551dae8a143bf85f9a') {
-                throw new Error('Game wallet address not configured. Please set VITE_GAME_WALLET_ADDRESS in your .env file');
-            }
-            
-            // CRITICAL: Prevent sending to yourself
-            if (walletState.account.toLowerCase() === GAME_WALLET_ADDRESS.toLowerCase()) {
-                throw new Error(
-                    'Invalid configuration: You cannot send payment to your own wallet address. ' +
-                    'Please update VITE_GAME_WALLET_ADDRESS in your .env file to the game\'s receiving wallet address.'
-                );
-            }
 
             // Ensure wallet is still connected
             if (!walletState.account) {

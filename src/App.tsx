@@ -252,6 +252,7 @@ const Home = () => {
         
         setIsProcessingPayment(true);
 
+        try {
             // Ensure wallet is still connected
             if (!walletState.account) {
                 throw new Error('Wallet disconnected. Please reconnect and try again.');
